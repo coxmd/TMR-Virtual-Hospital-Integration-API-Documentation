@@ -8,9 +8,7 @@
 
 ## Overview
 
-The TMR Virtual Hospital API exposes a controlled, read-only subset of MedicentreV3's clinical and administrative data to the TMR Virtual Hospital Application. All endpoints are prefixed with `/api/external/` and require OAuth2 Bearer token authentication except the token issuance endpoint itself.
-
-All request and response bodies use `application/json` unless otherwise stated. The token endpoint uses `application/x-www-form-urlencoded`.
+The TMR Virtual Hospital API exposes a controlled, read-only subset of MedicentreV3's clinical and administrative data to the TMR Virtual Hospital Application. All endpoints are prefixed with `/api/external/` and require OAuth2 Bearer token authentication except the token issuance endpoint.
 
 ---
 
@@ -22,18 +20,26 @@ https://medicentre.hanmak.co.ke/api/external
 
 ---
 
+## Property Name Casing
+
+**Request bodies** use **PascalCase** — the C# view model property names exactly.
+**Response bodies** use **camelCase** — ASP.NET Core default JSON serialisation.
+
+| ✅ Request (PascalCase) | ✅ Response (camelCase) |
+|---|---|
+| `"ClientId"` | `"clientId"` |
+| `"PatientNumber"` | `"patientNumber"` |
+| `"VisitId"` | `"visitId"` |
+| `"Pagination"` | `"pagination"` |
+| `"FromDate"` | `"fromDate"` |
+
+---
+
 ## Authentication
 
-The API uses the OAuth2 Client Credentials flow. All data endpoints require a valid Bearer token obtained from the token endpoint.
+**Token Lifetime:** 3600 seconds (1 hour)
 
-### Token Lifetime
-
-Access tokens are valid for **3600 seconds (1 hour)**. The TMR application must request a new token before expiry.
-
-### Authorization Header
-
-All data endpoints require:
-
+**Authorization Header (all data endpoints):**
 ```
 Authorization: Bearer {access_token}
 ```
@@ -42,48 +48,39 @@ Authorization: Bearer {access_token}
 
 ## Scopes
 
-Access is controlled at the endpoint level using OAuth2 scopes. The TMR application must request the relevant scope when obtaining a token.
-
-| Scope | Grants Access To |
+| Scope | Guards Access To |
 |---|---|
 | `tmr:patients:read` | Patient biodata and allergy records |
 | `tmr:history:read` | Patient clinical history |
 | `tmr:visits:read` | OPD visit records and visit lists |
 | `tmr:clinical:read` | Laboratory results, radiology, prescriptions |
-| `tmr:ipd:read` | Inpatient admissions and ward rounds |
+| `tmr:ipd:read` | Inpatient admissions |
 | `tmr:discharge:read` | Discharge details and discharge drugs |
-
-Multiple scopes may be requested in a single token by space-separating them in the `scope` field.
 
 ---
 
 ## Standard Response Envelope
 
-All data endpoints return a consistent response wrapper:
+All endpoints return the same camelCase wrapper:
 
 ```json
 {
   "success": true,
   "message": "string",
-  "correlationId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "generatedAtUtc": "2026-05-13T09:00:00Z",
   "errorCode": null,
-  "data": { }
+  "data": {},
+  "generatedAtUtc": "2026-05-13T10:40:44.8702392Z",
+  "correlationId": "9de5cd88b7384aa0a02bfa935037a00d"
 }
 ```
 
-| Field | Type | Description |
-|---|---|---|
-| `success` | `boolean` | `true` if the request was processed successfully |
-| `message` | `string` | Human-readable description of the result |
-| `correlationId` | `string` | Unique identifier for this response, for log correlation |
-| `generatedAtUtc` | `datetime` | UTC timestamp of response generation |
-| `errorCode` | `string\|null` | Machine-readable error code on failure; `null` on success |
-| `data` | `object\|null` | The response payload; `null` on failure |
+> **Note:** `correlationId` is a 32-character hex string without hyphens.
+
+---
 
 ## Paginated Response
 
-List endpoints return data wrapped in a paged result:
+List endpoints return data inside a paged result nested under `data`:
 
 ```json
 {
@@ -91,9 +88,26 @@ List endpoints return data wrapped in a paged result:
   "totalCount": 0,
   "page": 1,
   "pageSize": 20,
-  "totalPages": 0,
+  "totalPages": 1,
   "hasNextPage": false,
   "hasPreviousPage": false
+}
+```
+
+---
+
+## Patient Identifier
+
+All requests that resolve a patient accept a `PatientIdentifierViewModel`. Resolution order (first populated field wins):
+
+```json
+{
+  "PatientId": "string",       // 1. Internal system ID (highest)
+  "PatientNumber": "string",   // 2. OPD / registration number
+  "IDNumber": "string",        // 3. National ID number
+  "PassportNumber": "string",  // 4. Passport number
+  "PhoneNumber": "string",     // 5. Primary phone
+  "EmailAddress": "string"     // 6. Email address (lowest)
 }
 ```
 
@@ -103,32 +117,13 @@ List endpoints return data wrapped in a paged result:
 
 | Code | Description |
 |---|---|
-| `TMR_AUTH_FAILED` | Authentication failure — invalid or missing token |
-| `TMR_INVALID_TOKEN` | Token could not be parsed or has an invalid signature |
+| `TMR_AUTH_FAILED` | Invalid or missing token |
+| `TMR_INVALID_TOKEN` | Token signature invalid |
 | `TMR_TOKEN_EXPIRED` | Token has expired |
-| `TMR_INSUFFICIENT_SCOPE` | Token does not carry the required scope for this endpoint |
-| `TMR_NOT_FOUND` | The requested resource was not found or is outside the permitted branch |
+| `TMR_INSUFFICIENT_SCOPE` | Token does not carry the required scope |
+| `TMR_NOT_FOUND` | Resource not found or outside permitted branch |
 | `TMR_VALIDATION_FAILED` | Request body failed validation |
 | `TMR_INTERNAL_ERROR` | Unexpected server error |
-
----
-
-## Patient Identifier
-
-Requests that target a specific patient accept a flexible identifier object. Supply whichever identifiers the TMR system holds for the patient. Resolution follows this precedence order — the first populated field wins:
-
-```json
-{
-  "patientId": "string",       // 1. MedicentreV3 internal system ID (highest precedence)
-  "patientNumber": "string",   // 2. OPD / registration number
-  "idNumber": "string",        // 3. National ID card number
-  "passportNumber": "string",  // 4. Passport number
-  "phoneNumber": "string",     // 5. Primary phone number
-  "emailAddress": "string"     // 6. Email address (lowest precedence)
-}
-```
-
-At least one field must be populated.
 
 ---
 
@@ -142,32 +137,32 @@ At least one field must be populated.
 
 #### POST /auth/token
 
-Obtain an OAuth2 access token using the Client Credentials grant. The issued token encodes the client's permitted scopes, branch, and instance identity for use on all subsequent data requests.
+Obtain an OAuth2 access token using the Client Credentials grant.
 
 **Content-Type:** `application/x-www-form-urlencoded`
 
-**Request Parameters**
+**Request Body (PascalCase form keys):**
 
-| Parameter | Required | Description |
-|---|---|---|
-| `grant_type` | ✅ | Must be `client_credentials` |
-| `client_id` | ✅ | The API Key issued via the MedicentreV3 Mini Apps panel |
-| `client_secret` | ✅ | The client secret generated for this API Key |
-| `scope` | ✅ | Space-separated list of requested scopes |
+| Key | Value |
+|---|---|
+| `GrantType` | `client_credentials` |
+| `ClientId` | API Key from the Mini Apps Configuration panel |
+| `ClientSecret` | Secret generated for this API Key |
+| `Scope` | Space-separated list of requested scopes |
 
-**Example Request**
+**Example Request:**
 
 ```
 POST /api/external/auth/token
 Content-Type: application/x-www-form-urlencoded
 
-grant_type=client_credentials
-&client_id=JPbP7iRrILrSW8uxHG9hXHmq...
-&client_secret=ERopejGfWF6txAzCtmVFT6u9Pz7...
-&scope=tmr:patients:read tmr:visits:read tmr:clinical:read
+GrantType=client_credentials
+&ClientId=LMl%2BjL5SnEd%2B...
+&ClientSecret=qyc78YoRiZDB...
+&Scope=tmr:patients:read tmr:visits:read tmr:clinical:read
 ```
 
-**Example Response — 200 OK**
+**Example Response — 200 OK:**
 
 ```json
 {
@@ -178,12 +173,12 @@ grant_type=client_credentials
 }
 ```
 
-**Error Responses**
+**Error Responses:**
 
-| Status | Error | Cause |
-|---|---|---|
-| `401` | `invalid_client` | Unrecognised `client_id` or incorrect `client_secret` |
-| `400` | `invalid_scope` | Requested scope is not permitted for this client |
+| Status | Cause |
+|---|---|
+| `401` | Unrecognised `ClientId` or incorrect `ClientSecret` |
+| `400` | Requested scope is not permitted for this client |
 
 ---
 
@@ -193,67 +188,74 @@ grant_type=client_credentials
 
 #### POST /patients/biodata
 
-Retrieve full biographical data for a patient. The patient is resolved using the supplied identifier. At least one identifier field must be provided.
+Retrieve full biographical data for a patient.
 
 **Scope required:** `tmr:patients:read`
+**Content-Type:** `application/json`
 
-**Request Body**
+**Request Body:**
 
 ```json
 {
-  "identifier": {
-    "patientId": "string",
-    "patientNumber": "string",
-    "idNumber": "string",
-    "passportNumber": "string",
-    "phoneNumber": "string",
-    "emailAddress": "string"
+  "Identifier": {
+    "PatientId": "string",
+    "PatientNumber": "string",
+    "IDNumber": "string",
+    "PassportNumber": "string",
+    "PhoneNumber": "string",
+    "EmailAddress": "string"
   }
 }
 ```
 
-**Example Request**
+**Example — lookup by OPD number:**
 
 ```json
 {
-  "identifier": {
-    "patientNumber": "P-2024-0001"
+  "Identifier": {
+    "PatientNumber": "DH1281119"
   }
 }
 ```
 
-**Example Response — 200 OK**
+**Example Response — 200 OK** *(verified against live staging data)*
 
 ```json
 {
   "success": true,
-  "message": "Patient record retrieved.",
-  "correlationId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "generatedAtUtc": "2026-05-13T09:00:00Z",
+  "message": "Patient file found.",
   "errorCode": null,
   "data": {
-    "patientId": "SYS-001",
-    "patientNumber": "P-2024-0001",
-    "firstName": "John",
-    "lastName": "Kamau",
-    "dateOfBirth": "1985-03-14",
-    "age": 39,
+    "patientId": "145",
+    "patientNumber": "DH1281119",
+    "firstName": "John Mwembei",
+    "lastName": "Dummy",
+    "dateOfBirth": "1960-12-31T21:00:00",
+    "age": 66,
     "sex": "Male",
-    "phoneNumber": "254712345678",
-    "secondPhoneNumber": "254722000001",
-    "emailAddress": "john.kamau@email.com",
-    "address": "Westlands, Nairobi",
-    "idNumber": "30123456",
+    "phoneNumber": "07XXXXXXXX",
+    "secondPhoneNumber": "",
+    "emailAddress": "",
+    "address": "",
+    "idNumber": null,
     "passportNumber": null,
     "allergies": [
       {
-        "allergen": "Penicillin",
-        "reaction": "Rash and swelling"
+        "allergen": "Unknown",
+        "reaction": ""
       }
     ]
-  }
+  },
+  "generatedAtUtc": "2026-05-13T10:40:44.8702392Z",
+  "correlationId": "9de5cd88b7384aa0a02bfa935037a00d"
 }
 ```
+
+**Field Notes:**
+- `message` is `"Patient file found."` on success — not `"Successful."`
+- `secondPhoneNumber`, `emailAddress`, `address` may be empty strings
+- `idNumber`, `passportNumber` may be `null` if not recorded at registration
+- `allergies` is always an array; `reaction` may be an empty string
 
 ---
 
@@ -262,61 +264,74 @@ Retrieve full biographical data for a patient. The patient is resolved using the
 Retrieve the clinical encounter history for a patient. Results are paginated.
 
 **Scope required:** `tmr:history:read`
+**Content-Type:** `application/json`
 
-**Request Body**
+**Request Body:**
 
 ```json
 {
-  "patientId": "string",
-  "fromDate": "2025-01-01T00:00:00Z",
-  "toDate": "2026-05-13T00:00:00Z",
-  "encounterType": "Outpatient",
-  "pagination": {
-    "page": 1,
-    "pageSize": 20
+  "Identifier": {
+    "PatientId": "string",
+    "PatientNumber": "string",
+    "IDNumber": "string",
+    "PassportNumber": "string",
+    "PhoneNumber": "string",
+    "EmailAddress": "string"
+  },
+  "FromDate": "2025-01-01T00:00:00Z",
+  "ToDate": "2026-05-13T00:00:00Z",
+  "EncounterType": "string",
+  "Pagination": {
+    "Page": 1,
+    "PageSize": 20
   }
 }
 ```
 
-| Field | Required | Description |
-|---|---|---|
-| `patientId` | ✅ | The MedicentreV3 internal patient ID |
-| `fromDate` | — | Filter encounters from this UTC date |
-| `toDate` | — | Filter encounters to this UTC date |
-| `encounterType` | — | Optional filter: `Outpatient`, `Inpatient` |
-| `pagination.page` | — | Page number, default `1` |
-| `pagination.pageSize` | — | Results per page, default `20`, max `100` |
+**Example Request:**
 
-**Example Response — 200 OK**
+```json
+{
+  "Identifier": {
+    "PatientNumber": "DH1281119"
+  },
+  "Pagination": {
+    "Page": 1,
+    "PageSize": 10
+  }
+}
+```
+
+**Example Response — 200 OK:**
 
 ```json
 {
   "success": true,
-  "message": "2 history entries retrieved.",
-  "correlationId": "a3f9c1d2-e8b0-47ab-8c21-d3f4e5b6c7d8",
-  "generatedAtUtc": "2026-05-13T09:00:00Z",
+  "message": "Successful.",
   "errorCode": null,
   "data": {
     "items": [
       {
-        "entryId": "HIST-001",
-        "patientId": "SYS-001",
-        "encounterDateUtc": "2026-04-12T08:00:00Z",
+        "entryId": "61106",
+        "patientId": "145",
+        "encounterDateUtc": "2022-09-12T06:48:51Z",
         "encounterType": "Outpatient",
-        "attendingClinician": "Dr. Otieno",
-        "department": "General OPD",
-        "primaryDiagnosis": "Upper Respiratory Tract Infection",
-        "chiefComplaint": "Cough and fever for 3 days",
+        "attendingClinician": "Gekonge Wycliffe",
+        "department": "Out Patient Department",
+        "primaryDiagnosis": "Plasmodium falciparum malaria, unspecified",
+        "chiefComplaint": null,
         "branchName": "Main Branch"
       }
     ],
-    "totalCount": 2,
+    "totalCount": 1,
     "page": 1,
-    "pageSize": 20,
+    "pageSize": 10,
     "totalPages": 1,
     "hasNextPage": false,
     "hasPreviousPage": false
-  }
+  },
+  "generatedAtUtc": "2026-05-13T09:00:00.0000000Z",
+  "correlationId": "a3f9c1d2e8b047ab8c21d3f4e5b6c7d8"
 }
 ```
 
@@ -328,178 +343,279 @@ Retrieve the clinical encounter history for a patient. Results are paginated.
 
 #### POST /visits
 
-Retrieve a paginated list of outpatient visits. Results can be filtered by patient identifier, date range, visit type, or status.
+Retrieve a paginated list of outpatient visits.
 
 **Scope required:** `tmr:visits:read`
+**Content-Type:** `application/json`
 
-**Request Body**
+**Request Body:**
 
 ```json
 {
-  "patient": {
-    "patientId": "string",
-    "patientNumber": "string",
-    "idNumber": "string",
-    "passportNumber": "string",
-    "phoneNumber": "string",
-    "emailAddress": "string"
+  "Patient": {
+    "PatientId": "string",
+    "PatientNumber": "string",
+    "IDNumber": "string",
+    "PassportNumber": "string",
+    "PhoneNumber": "string",
+    "EmailAddress": "string"
   },
-  "fromDate": "2026-01-01T00:00:00Z",
-  "toDate": "2026-05-13T00:00:00Z",
-  "visitType": "OPD",
-  "status": "Closed",
-  "pagination": {
-    "page": 1,
-    "pageSize": 20
+  "FromDate": "2026-01-01T00:00:00Z",
+  "ToDate": "2026-05-13T00:00:00Z",
+  "VisitType": "string",
+  "Status": "string",
+  "Pagination": {
+    "Page": 1,
+    "PageSize": 20
   }
 }
 ```
 
-All fields are optional. An empty body returns all visits within the client's permitted branch.
+All fields are optional. An empty body `{}` returns all visits within the client's permitted branch.
 
-**Example Response — 200 OK**
+**Example — filter by patient:**
+
+```json
+{
+  "Patient": {
+    "PatientNumber": "DH1281119"
+  },
+  "Pagination": { "Page": 1, "PageSize": 20 }
+}
+```
+
+**Example — no filter:**
+
+```json
+{
+  "Pagination": { "Page": 1, "PageSize": 20 }
+}
+```
+
+**Example Response — 200 OK:**
 
 ```json
 {
   "success": true,
-  "message": "2 visits retrieved.",
-  "correlationId": "b7e2d4f1-c9a8-53ab-9d12-e4f5a6b7c8d9",
-  "generatedAtUtc": "2026-05-13T09:00:00Z",
+  "message": "Successful.",
   "errorCode": null,
   "data": {
     "items": [
       {
-        "visitId": "V-001",
-        "visitNumber": "OPD-2024-0891",
-        "patientId": "SYS-001",
-        "visitDate": "2026-05-07T08:00:00Z",
-        "visitType": "OPD",
+        "visitId": "61106",
+        "visitNumber": "61106",
+        "patientId": "145",
+        "visitDate": "2022-09-12T06:48:51",
+        "visitType": "Outpatient",
         "status": "Closed",
-        "department": "General OPD",
-        "attendingClinician": "Dr. Otieno",
+        "department": "Out Patient Department",
+        "attendingClinician": "Gekonge Wycliffe",
         "branchName": "Main Branch",
-        "paymentMode": "Insurance",
-        "insuranceScheme": "AAR"
+        "paymentMode": "Cash Payers",
+        "insuranceScheme": null
       }
     ],
-    "totalCount": 2,
+    "totalCount": 1,
     "page": 1,
     "pageSize": 20,
     "totalPages": 1,
     "hasNextPage": false,
     "hasPreviousPage": false
-  }
+  },
+  "generatedAtUtc": "2026-05-13T09:00:00.0000000Z",
+  "correlationId": "b7e2d4f1c9a853ab9d12e4f5a6b7c8d9"
 }
 ```
+
+**Field Notes:**
+- `visitType` is `"Outpatient"` — not `"OPD"`
+- `insuranceScheme` is `null` for cash payers
 
 ---
 
 #### GET /visits/{visitId}/opd
 
-Retrieve the complete OPD visit detail composite for a specific visit. Returns patient biodata, visit header, triage vitals, clinical notes, diagnoses, laboratory results, radiology examinations, medicines, and procedures in a single response.
+Retrieve the complete OPD visit detail composite.
 
 **Scope required:** `tmr:clinical:read`
 
-**Path Parameters**
+**Path Parameters:**
 
 | Parameter | Type | Description |
 |---|---|---|
 | `visitId` | `string` | The unique visit identifier |
 
-**Example Request**
+**Example Request:**
 
 ```
-GET /api/external/visits/V-001/opd
+GET /api/external/visits/61106/opd
 Authorization: Bearer {access_token}
 ```
 
-**Example Response — 200 OK**
+**Example Response — 200 OK** *(verified against live staging data)*
 
 ```json
 {
   "success": true,
-  "message": "OPD visit detail retrieved.",
-  "correlationId": "c1f8a6b4-d3e7-92ab-1c23-f4a5b6c7d8e9",
-  "generatedAtUtc": "2026-05-13T09:00:00Z",
+  "message": "Successful.",
   "errorCode": null,
   "data": {
     "patientBiodata": {
-      "patientId": "SYS-001",
-      "patientNumber": "P-2024-0001",
-      "firstName": "John",
-      "lastName": "Kamau",
-      "age": 39,
+      "patientId": "145",
+      "patientNumber": "DH1281119",
+      "firstName": "John Mwembei",
+      "lastName": "Dummy",
+      "dateOfBirth": "1960-12-31T21:00:00",
+      "age": 66,
       "sex": "Male",
+      "phoneNumber": "07XXXXXXXX",
+      "secondPhoneNumber": "",
+      "emailAddress": "",
+      "address": "",
+      "idNumber": null,
+      "passportNumber": null,
       "allergies": [
-        { "allergen": "Penicillin", "reaction": "Rash and swelling" }
+        { "allergen": "Unknown", "reaction": "" }
       ]
     },
     "visitSummary": {
-      "visitId": "V-001",
-      "visitNumber": "OPD-2024-0891",
-      "visitDate": "2026-05-07T08:00:00Z",
-      "visitType": "OPD",
+      "visitId": "61106",
+      "visitNumber": "61106",
+      "patientId": "145",
+      "visitDate": "2022-09-12T06:48:51",
+      "visitType": "Outpatient",
       "status": "Closed",
-      "department": "General OPD",
-      "attendingClinician": "Dr. Otieno",
+      "department": "Out Patient Department",
+      "attendingClinician": "Gekonge Wycliffe",
       "branchName": "Main Branch",
-      "paymentMode": "Insurance"
+      "paymentMode": "Cash Payers",
+      "insuranceScheme": null
     },
     "clinicalNotes": {
       "triage": {
-        "bloodPressure": "130/85 mmHg",
-        "temperature": "38.2 °C",
-        "pulseRate": "92 bpm",
-        "respiratoryRate": "18 breaths/min",
-        "oxygenSaturation": "97%",
-        "weight": "74 kg",
-        "height": "175 cm",
-        "bmi": "24.2"
+        "bloodPressure": "120/80 mmHg",
+        "temperature": "38.0 C",
+        "pulseRate": null,
+        "respiratoryRate": null,
+        "oxygenSaturation": null,
+        "weight": "60 Kg",
+        "height": "0.7 m",
+        "bmi": "122.45 Kg/M2",
+        "additionalNotes": null
       },
-      "doctorNotes": "Patient presents with productive cough and fever for 3 days...",
-      "recordedAtUtc": "2026-05-07T09:15:00Z",
-      "recordedBy": "Dr. Otieno"
+      "doctorNotes": null,
+      "recordedAtUtc": "2022-09-12T06:48:51Z",
+      "recordedBy": null
     },
     "diagnoses": [
       {
-        "diagnosisCode": "J06.9",
-        "diagnosisName": "Acute Upper Respiratory Infection",
-        "diagnosisType": "Primary"
+        "diagnosisCode": "B50.9",
+        "diagnosisName": "Plasmodium falciparum malaria, unspecified",
+        "diagnosisType": null,
+        "notes": null
       }
     ],
     "labTests": [
       {
-        "labTestId": "LAB-001",
-        "testName": "Full Blood Count",
-        "testCategory": "Haematology",
-        "status": "Resulted",
-        "resultValue": "WBC: 11.2 x10³/μL",
-        "referenceRange": "4.0–11.0 x10³/μL",
+        "labTestId": "56425",
+        "visitId": "61106",
+        "patientId": "145",
+        "testName": "BS for Malaria - Falciparum",
+        "testCategory": null,
+        "orderedAtUtc": "2022-09-12T06:55:41Z",
+        "resultedAtUtc": null,
+        "status": "Pending",
+        "resultValue": "",
+        "resultUnit": " ",
+        "referenceRange": "Seen",
+        "isAbnormal": false,
+        "orderingClinician": "Wycliffe"
+      },
+      {
+        "labTestId": "56426",
+        "visitId": "61106",
+        "patientId": "145",
+        "testName": "Blood Sugar - Random blood sugar",
+        "testCategory": null,
+        "orderedAtUtc": "2022-09-12T06:55:41Z",
+        "resultedAtUtc": null,
+        "status": "Pending",
+        "resultValue": "11",
+        "resultUnit": "mmol/l",
+        "referenceRange": "High",
         "isAbnormal": true,
-        "orderedAtUtc": "2026-05-07T08:30:00Z",
-        "resultedAtUtc": "2026-05-07T10:45:00Z",
-        "orderingClinician": "Dr. Otieno"
+        "orderingClinician": "Wycliffe"
       }
     ],
     "radiologyExaminations": [],
     "medicines": [
       {
-        "prescriptionId": "RX-001",
-        "drugName": "Amoxicillin 500mg",
-        "dosage": "500mg",
-        "frequency": "Three times daily",
-        "duration": "7 days",
-        "route": "Oral",
-        "quantity": "21 capsules",
+        "prescriptionId": "179057",
+        "visitId": "61106",
+        "patientId": "145",
+        "drugName": "PARACETAMOL 500MG",
+        "dosage": "Tablet",
+        "frequency": "3",
+        "duration": "3 Days",
+        "route": "Tablet",
+        "quantity": "2",
+        "status": "Billed",
+        "prescribedAtUtc": "2022-09-12T10:12:05Z",
+        "prescribingClinician": "g.wycliffe"
+      },
+      {
+        "prescriptionId": "179058",
+        "visitId": "61106",
+        "patientId": "145",
+        "drugName": "DICLOFENAC 50MG",
+        "dosage": "Tablet",
+        "frequency": "3",
+        "duration": "5 Days",
+        "route": "Tablet",
+        "quantity": "1",
         "status": "Dispensed",
-        "prescribedAtUtc": "2026-05-07T09:20:00Z",
-        "prescribingClinician": "Dr. Otieno"
+        "prescribedAtUtc": "2022-09-12T10:12:05Z",
+        "prescribingClinician": "g.wycliffe"
+      },
+      {
+        "prescriptionId": "179059",
+        "visitId": "61106",
+        "patientId": "145",
+        "drugName": "ARTEMETHER INJECTION 80MG INJECTION",
+        "dosage": "ml",
+        "frequency": "2",
+        "duration": "5 Days",
+        "route": "Injection",
+        "quantity": "5",
+        "status": "Dispensed",
+        "prescribedAtUtc": "2022-09-12T10:12:05Z",
+        "prescribingClinician": "g.wycliffe"
       }
     ],
-    "procedures": []
-  }
+    "procedures": [
+      {
+        "procedureName": "Apendix Surgery",
+        "notes": "Procedure: na\nSurgeon: Gekonge\nAssistant Surgeon: Wycliffe\nAnaesthetist: Wycliffe\nScrub Nurse: Nyamwaya\nDoctor: Gekonge\nAnaesthesia Type: Abdomen and part of chest\nIncision: upper abdomen\nBiopsy Specimen: blood\nComplications: none\nEstimated Blood Loss: 0.8\nTheatre Count: Correct\nStatus: Completed",
+        "performedAtUtc": "2022-09-12T09:56:20Z",
+        "performedBy": "Gekonge"
+      }
+    ]
+  },
+  "generatedAtUtc": "2026-05-13T11:10:34.6428598Z",
+  "correlationId": "4965f0bf8256469399bf3787646459c5"
 }
 ```
+
+**Field Notes:**
+- `triage.pulseRate`, `respiratoryRate`, `oxygenSaturation` may be `null`
+- `clinicalNotes.doctorNotes` may be `null`
+- `clinicalNotes.recordedBy` may be `null`
+- `diagnoses[].diagnosisType` and `notes` may be `null`
+- `labTests[].testCategory` and `resultedAtUtc` may be `null`
+- `labTests[].resultValue` may be an empty string when result is pending
+- `medicines[].dosage` is the dosage form (e.g. `"Tablet"`, `"ml"`) — not the strength
+- `medicines[].frequency` and `quantity` are string numbers (e.g. `"3"`, `"2"`)
+- `radiologyExaminations` and `procedures` may be empty arrays
 
 ---
 
@@ -509,62 +625,112 @@ Authorization: Bearer {access_token}
 
 #### POST /clinical/lab-results
 
-Retrieve laboratory test results for a patient or a specific visit. Results are paginated.
+Retrieve laboratory test results for a patient or visit.
 
 **Scope required:** `tmr:clinical:read`
+**Content-Type:** `application/json`
 
-**Request Body**
+**Request Body:**
 
 ```json
 {
-  "visitId": "string",
-  "patientId": "string",
-  "fromDate": "2026-01-01T00:00:00Z",
-  "toDate": "2026-05-13T00:00:00Z",
-  "pagination": {
-    "page": 1,
-    "pageSize": 20
+  "Patient": {
+    "PatientId": "string",
+    "PatientNumber": "string",
+    "IDNumber": "string",
+    "PassportNumber": "string",
+    "PhoneNumber": "string",
+    "EmailAddress": "string"
+  },
+  "VisitId": "string",
+  "FromDate": "2026-01-01T00:00:00Z",
+  "ToDate": "2026-05-13T00:00:00Z",
+  "Pagination": {
+    "Page": 1,
+    "PageSize": 20
   }
 }
 ```
 
-Either `visitId` or `patientId` must be provided.
+Either `VisitId` or a populated `Patient` identifier must be provided.
 
-**Example Response — 200 OK**
+**Example — by visit:**
+
+```json
+{
+  "VisitId": "61106",
+  "Pagination": { "Page": 1, "PageSize": 20 }
+}
+```
+
+**Example — by patient:**
+
+```json
+{
+  "Patient": {
+    "PatientNumber": "DH1281119"
+  },
+  "Pagination": { "Page": 1, "PageSize": 20 }
+}
+```
+
+**Example Response — 200 OK** *(item structure verified from live OPD composite)*
 
 ```json
 {
   "success": true,
-  "message": "1 lab result(s) retrieved.",
-  "correlationId": "d2e3f4a5-b6c7-89ab-2d34-e5f6a7b8c9d0",
-  "generatedAtUtc": "2026-05-13T09:00:00Z",
+  "message": "Successful.",
   "errorCode": null,
   "data": {
     "items": [
       {
-        "labTestId": "LAB-001",
-        "visitId": "V-001",
-        "patientId": "SYS-001",
-        "testName": "Full Blood Count",
-        "testCategory": "Haematology",
-        "status": "Resulted",
-        "resultValue": "WBC: 11.2 x10³/μL",
-        "referenceRange": "4.0–11.0 x10³/μL",
+        "labTestId": "56425",
+        "visitId": "61106",
+        "patientId": "145",
+        "testName": "BS for Malaria - Falciparum",
+        "testCategory": null,
+        "orderedAtUtc": "2022-09-12T06:55:41Z",
+        "resultedAtUtc": null,
+        "status": "Pending",
+        "resultValue": "",
+        "resultUnit": " ",
+        "referenceRange": "Seen",
+        "isAbnormal": false,
+        "orderingClinician": "Wycliffe"
+      },
+      {
+        "labTestId": "56426",
+        "visitId": "61106",
+        "patientId": "145",
+        "testName": "Blood Sugar - Random blood sugar",
+        "testCategory": null,
+        "orderedAtUtc": "2022-09-12T06:55:41Z",
+        "resultedAtUtc": null,
+        "status": "Pending",
+        "resultValue": "11",
+        "resultUnit": "mmol/l",
+        "referenceRange": "High",
         "isAbnormal": true,
-        "orderedAtUtc": "2026-05-07T08:30:00Z",
-        "resultedAtUtc": "2026-05-07T10:45:00Z",
-        "orderingClinician": "Dr. Otieno"
+        "orderingClinician": "Wycliffe"
       }
     ],
-    "totalCount": 1,
+    "totalCount": 2,
     "page": 1,
     "pageSize": 20,
     "totalPages": 1,
     "hasNextPage": false,
     "hasPreviousPage": false
-  }
+  },
+  "generatedAtUtc": "2026-05-13T09:00:00.0000000Z",
+  "correlationId": "d2e3f4a5b6c789ab2d34e5f6a7b8c9d0"
 }
 ```
+
+**Field Notes:**
+- `testCategory` may be `null`
+- `resultedAtUtc` is `null` when result is still pending
+- `resultValue` may be an empty string for pending tests
+- `isAbnormal` is always a boolean
 
 ---
 
@@ -573,30 +739,38 @@ Either `visitId` or `patientId` must be provided.
 Retrieve radiology examination records for a patient or visit.
 
 **Scope required:** `tmr:clinical:read`
+**Content-Type:** `application/json`
 
-**Request Body** — Same structure as `/clinical/lab-results`
+**Request Body** — same structure as `/clinical/lab-results`
 
-**Example Response — 200 OK**
+**Example Request:**
+
+```json
+{
+  "VisitId": "61106",
+  "Pagination": { "Page": 1, "PageSize": 20 }
+}
+```
+
+**Example Response — 200 OK:**
 
 ```json
 {
   "success": true,
-  "message": "1 radiology examination(s) retrieved.",
-  "correlationId": "e3f4a5b6-c7d8-90ab-3e45-f6a7b8c9d0e1",
-  "generatedAtUtc": "2026-05-13T09:00:00Z",
+  "message": "Successful.",
   "errorCode": null,
   "data": {
     "items": [
       {
         "examinationId": "RAD-001",
-        "visitId": "V-001",
-        "patientId": "SYS-001",
+        "visitId": "61106",
+        "patientId": "145",
         "examinationType": "Chest X-Ray",
         "status": "Reported",
         "findings": "No active pulmonary lesion identified.",
-        "requestedAtUtc": "2026-05-07T08:30:00Z",
-        "reportedAtUtc": "2026-05-07T11:00:00Z",
-        "requestingClinician": "Dr. Otieno",
+        "requestedAtUtc": "2022-09-12T08:30:00Z",
+        "reportedAtUtc": "2022-09-12T11:00:00Z",
+        "requestingClinician": "Gekonge Wycliffe",
         "reportingRadiologist": "Dr. Mwenda"
       }
     ],
@@ -606,7 +780,9 @@ Retrieve radiology examination records for a patient or visit.
     "totalPages": 1,
     "hasNextPage": false,
     "hasPreviousPage": false
-  }
+  },
+  "generatedAtUtc": "2026-05-13T09:00:00.0000000Z",
+  "correlationId": "e3f4a5b6c7d890ab3e45f6a7b8c9d0e1"
 }
 ```
 
@@ -617,44 +793,87 @@ Retrieve radiology examination records for a patient or visit.
 Retrieve prescription and dispensing records for a patient or visit.
 
 **Scope required:** `tmr:clinical:read`
+**Content-Type:** `application/json`
 
-**Request Body** — Same structure as `/clinical/lab-results`
+**Request Body** — same structure as `/clinical/lab-results`
 
-**Example Response — 200 OK**
+**Example Request:**
+
+```json
+{
+  "VisitId": "61106",
+  "Pagination": { "Page": 1, "PageSize": 20 }
+}
+```
+
+**Example Response — 200 OK** *(item structure verified from live OPD composite)*
 
 ```json
 {
   "success": true,
-  "message": "2 prescription(s) retrieved.",
-  "correlationId": "f4a5b6c7-d8e9-01ab-4f56-a7b8c9d0e1f2",
-  "generatedAtUtc": "2026-05-13T09:00:00Z",
+  "message": "Successful.",
   "errorCode": null,
   "data": {
     "items": [
       {
-        "prescriptionId": "RX-001",
-        "visitId": "V-001",
-        "patientId": "SYS-001",
-        "drugName": "Amoxicillin 500mg",
-        "dosage": "500mg",
-        "frequency": "Three times daily",
-        "duration": "7 days",
-        "route": "Oral",
-        "quantity": "21 capsules",
+        "prescriptionId": "179057",
+        "visitId": "61106",
+        "patientId": "145",
+        "drugName": "PARACETAMOL 500MG",
+        "dosage": "Tablet",
+        "frequency": "3",
+        "duration": "3 Days",
+        "route": "Tablet",
+        "quantity": "2",
+        "status": "Billed",
+        "prescribedAtUtc": "2022-09-12T10:12:05Z",
+        "prescribingClinician": "g.wycliffe"
+      },
+      {
+        "prescriptionId": "179058",
+        "visitId": "61106",
+        "patientId": "145",
+        "drugName": "DICLOFENAC 50MG",
+        "dosage": "Tablet",
+        "frequency": "3",
+        "duration": "5 Days",
+        "route": "Tablet",
+        "quantity": "1",
         "status": "Dispensed",
-        "prescribedAtUtc": "2026-05-07T09:20:00Z",
-        "prescribingClinician": "Dr. Otieno"
+        "prescribedAtUtc": "2022-09-12T10:12:05Z",
+        "prescribingClinician": "g.wycliffe"
+      },
+      {
+        "prescriptionId": "179059",
+        "visitId": "61106",
+        "patientId": "145",
+        "drugName": "ARTEMETHER INJECTION 80MG INJECTION",
+        "dosage": "ml",
+        "frequency": "2",
+        "duration": "5 Days",
+        "route": "Injection",
+        "quantity": "5",
+        "status": "Dispensed",
+        "prescribedAtUtc": "2022-09-12T10:12:05Z",
+        "prescribingClinician": "g.wycliffe"
       }
     ],
-    "totalCount": 2,
+    "totalCount": 3,
     "page": 1,
     "pageSize": 20,
     "totalPages": 1,
     "hasNextPage": false,
     "hasPreviousPage": false
-  }
+  },
+  "generatedAtUtc": "2026-05-13T09:00:00.0000000Z",
+  "correlationId": "f4a5b6c7d8e901ab4f56a7b8c9d0e1f2"
 }
 ```
+
+**Field Notes:**
+- `dosage` is the dosage form (`"Tablet"`, `"ml"`, `"Injection"`) — not the strength
+- `frequency` and `quantity` are string numbers (`"3"`, `"2"`, `"5"`)
+- `status` values observed: `"Billed"`, `"Dispensed"`
 
 ---
 
@@ -664,59 +883,77 @@ Retrieve prescription and dispensing records for a patient or visit.
 
 #### POST /ipd/visits
 
-Retrieve a paginated list of inpatient admissions. Results can be filtered by patient, date range, or status.
+Retrieve a paginated list of inpatient admissions.
 
 **Scope required:** `tmr:ipd:read`
+**Content-Type:** `application/json`
 
-**Request Body**
+**Request Body:**
 
 ```json
 {
-  "patient": {
-    "patientId": "string",
-    "patientNumber": "string",
-    "idNumber": "string",
-    "passportNumber": "string",
-    "phoneNumber": "string",
-    "emailAddress": "string"
+  "Patient": {
+    "PatientId": "string",
+    "PatientNumber": "string",
+    "IDNumber": "string",
+    "PassportNumber": "string",
+    "PhoneNumber": "string",
+    "EmailAddress": "string"
   },
-  "fromDate": "2026-01-01T00:00:00Z",
-  "toDate": "2026-05-13T00:00:00Z",
-  "status": "Discharged",
-  "pagination": {
-    "page": 1,
-    "pageSize": 20
+  "FromDate": "2026-01-01T00:00:00Z",
+  "ToDate": "2026-05-13T00:00:00Z",
+  "Status": "string",
+  "Pagination": {
+    "Page": 1,
+    "PageSize": 20
   }
 }
 ```
 
 All fields are optional.
 
-**Example Response — 200 OK**
+**Example — all admissions:**
+
+```json
+{
+  "Pagination": { "Page": 1, "PageSize": 20 }
+}
+```
+
+**Example — active admissions only:**
+
+```json
+{
+  "Status": "Active",
+  "Pagination": { "Page": 1, "PageSize": 20 }
+}
+```
+
+**Example Response — 200 OK** *(verified against live staging data)*
 
 ```json
 {
   "success": true,
-  "message": "1 IPD admission(s) retrieved.",
-  "correlationId": "a1b2c3d4-e5f6-78ab-9a0b-c1d2e3f4a5b6",
-  "generatedAtUtc": "2026-05-13T09:00:00Z",
+  "message": "Successful.",
   "errorCode": null,
   "data": {
     "items": [
       {
-        "ipdVisitId": "IPD-001",
-        "visitNumber": "IPD-2024-0042",
-        "patientId": "SYS-001",
-        "patientName": "John Kamau",
-        "patientNumber": "P-2024-0001",
-        "visitDate": "2026-05-02T08:00:00Z",
-        "dischargeDateUtc": "2026-05-06T10:00:00Z",
-        "ward": "General Ward",
-        "bedNumber": "G-12",
-        "admittingClinician": "Dr. Mwangi",
-        "admissionDiagnosis": "Typhoid Fever",
-        "status": "Discharged",
-        "paymentMode": "Cash",
+        "ipdVisitId": "62627",
+        "visitNumber": "62627",
+        "patientId": "587",
+        "patientName": "Margret Nyangasi Malowa Dummy",
+        "patientNumber": "DH5131219",
+        "visitDate": "2026-02-24T12:48:42",
+        "visitType": "Inpatient",
+        "dischargeDateUtc": null,
+        "ward": "Out Patient Department",
+        "bedNumber": null,
+        "admittingClinician": "Lugongo Abel",
+        "admissionDiagnosis": "",
+        "status": "Active",
+        "paymentMode": "Cash Payers",
+        "insuranceScheme": null,
         "branchName": "Main Branch"
       }
     ],
@@ -726,114 +963,119 @@ All fields are optional.
     "totalPages": 1,
     "hasNextPage": false,
     "hasPreviousPage": false
-  }
+  },
+  "generatedAtUtc": "2026-05-13T19:27:32.9656335Z",
+  "correlationId": "71d1cf7fa5984fe591ab7abbf6afb40c"
 }
 ```
+
+**Field Notes:**
+- `visitType` is `"Inpatient"` — not `"IPD"`
+- `dischargeDateUtc` is `null` for active admissions
+- `bedNumber` may be `null` if not yet assigned
+- `admissionDiagnosis` may be an empty string
+- `status` values: `"Active"` for current admissions, `"Discharged"` for completed
+- `insuranceScheme` is `null` for cash payers
 
 ---
 
 #### GET /ipd/visits/{ipdVisitId}
 
-Retrieve the header record of a specific inpatient admission.
+Retrieve the record of a specific inpatient admission.
 
 **Scope required:** `tmr:ipd:read`
 
-**Path Parameters**
+**Path Parameters:**
 
 | Parameter | Type | Description |
 |---|---|---|
 | `ipdVisitId` | `string` | The unique IPD visit identifier |
 
-**Example Request**
+**Example Request:**
 
 ```
-GET /api/external/ipd/visits/IPD-001
+GET /api/external/ipd/visits/62627
 Authorization: Bearer {access_token}
 ```
 
-**Example Response — 200 OK** — Same structure as a single item from `POST /ipd/visits`.
+**Example Response — 200 OK** — Same shape as a single item from `POST /ipd/visits`.
 
 ---
 
 #### POST /ipd/visits/{ipdVisitId}/ward-rounds
 
-Retrieve the ward round records for an inpatient admission. Each ward round includes a full clinical composite — triage observations, doctor notes, diagnoses, lab results, radiology, and medicines as at the time of that round.
+Retrieve ward round records for an inpatient admission.
 
 **Scope required:** `tmr:clinical:read`
 
-**Path Parameters**
+**Path Parameters:**
 
 | Parameter | Type | Description |
 |---|---|---|
 | `ipdVisitId` | `string` | The unique IPD visit identifier |
 
-**Request Body**
+**Request Body:**
 
 ```json
 {
-  "page": 1,
-  "pageSize": 20
+  "Page": 1,
+  "PageSize": 20
 }
 ```
 
-**Example Response — 200 OK**
+**Example Response — 200 OK:**
 
 ```json
 {
   "success": true,
-  "message": "1 ward round(s) retrieved.",
-  "correlationId": "b2c3d4e5-f6a7-89bc-0b1c-d2e3f4a5b6c7",
-  "generatedAtUtc": "2026-05-13T09:00:00Z",
+  "message": "Successful.",
   "errorCode": null,
   "data": {
     "items": [
       {
         "wardRoundId": "WR-001",
-        "ipdVisitId": "IPD-001",
-        "patientId": "SYS-001",
-        "wardRoundDateUtc": "2026-05-03T08:00:00Z",
-        "patientBiodata": {
-          "patientId": "SYS-001",
-          "firstName": "John",
-          "lastName": "Kamau",
-          "age": 39,
-          "sex": "Male"
-        },
+        "ipdVisitId": "62627",
+        "patientId": "587",
+        "wardRoundDateUtc": "2026-02-25T08:00:00Z",
         "clinicalNotes": {
           "triage": {
             "bloodPressure": "118/76 mmHg",
-            "temperature": "39.1 °C",
-            "pulseRate": "98 bpm",
-            "oxygenSaturation": "96%"
+            "temperature": "39.1 C",
+            "pulseRate": null,
+            "respiratoryRate": null,
+            "oxygenSaturation": null,
+            "weight": null,
+            "height": null,
+            "bmi": null,
+            "additionalNotes": null
           },
-          "doctorNotes": "Day 1 review. Patient febrile, responding to IV ceftriaxone...",
-          "recordedAtUtc": "2026-05-03T08:30:00Z",
-          "recordedBy": "Dr. Mwangi"
+          "doctorNotes": null,
+          "recordedAtUtc": "2026-02-25T08:30:00Z",
+          "recordedBy": "Lugongo Abel"
         },
         "diagnoses": [
           {
             "diagnosisCode": "A01.0",
             "diagnosisName": "Typhoid Fever",
-            "diagnosisType": "Primary"
+            "diagnosisType": null,
+            "notes": null
           }
         ],
-        "labTests": [
-          {
-            "testName": "Widal Test",
-            "testCategory": "Serology",
-            "status": "Resulted",
-            "resultValue": "S. Typhi O: 1/160",
-            "isAbnormal": true
-          }
-        ],
+        "labTests": [],
         "medicines": [
           {
-            "drugName": "Ceftriaxone 1g IV",
-            "dosage": "1g",
-            "frequency": "Once daily",
-            "duration": "5 days",
-            "route": "IV",
-            "status": "Administered"
+            "prescriptionId": "180001",
+            "visitId": "62627",
+            "patientId": "587",
+            "drugName": "CEFTRIAXONE 1G IV",
+            "dosage": "ml",
+            "frequency": "1",
+            "duration": "5 Days",
+            "route": "Injection",
+            "quantity": "5",
+            "status": "Administered",
+            "prescribedAtUtc": "2026-02-25T09:00:00Z",
+            "prescribingClinician": "Lugongo Abel"
           }
         ],
         "radiologyExaminations": [],
@@ -846,7 +1088,9 @@ Retrieve the ward round records for an inpatient admission. Each ward round incl
     "totalPages": 1,
     "hasNextPage": false,
     "hasPreviousPage": false
-  }
+  },
+  "generatedAtUtc": "2026-05-13T09:00:00.0000000Z",
+  "correlationId": "b2c3d4e5f6a789bc0b1cd2e3f4a5b6c7"
 }
 ```
 
@@ -854,62 +1098,57 @@ Retrieve the ward round records for an inpatient admission. Each ward round incl
 
 #### GET /ipd/visits/{ipdVisitId}/discharge
 
-Retrieve the discharge summary for an inpatient admission, including discharge notes, discharge drugs, and the recommended return date.
+Retrieve the discharge summary for an inpatient admission.
 
 **Scope required:** `tmr:discharge:read`
 
-**Path Parameters**
+**Path Parameters:**
 
 | Parameter | Type | Description |
 |---|---|---|
 | `ipdVisitId` | `string` | The unique IPD visit identifier |
 
-**Example Request**
+**Example Request:**
 
 ```
-GET /api/external/ipd/visits/IPD-001/discharge
+GET /api/external/ipd/visits/62627/discharge
 Authorization: Bearer {access_token}
 ```
 
-**Example Response — 200 OK**
+**Example Response — 200 OK:**
 
 ```json
 {
   "success": true,
-  "message": "Discharge details retrieved.",
-  "correlationId": "c3d4e5f6-a7b8-90cd-1c2d-e3f4a5b6c7d8",
-  "generatedAtUtc": "2026-05-13T09:00:00Z",
+  "message": "Successful.",
   "errorCode": null,
   "data": {
     "dischargeId": "DC-001",
-    "ipdVisitId": "IPD-001",
-    "patientId": "SYS-001",
-    "dischargeDateUtc": "2026-05-06T10:00:00Z",
+    "ipdVisitId": "62627",
+    "patientId": "587",
+    "dischargeDateUtc": "2026-03-01T10:00:00Z",
     "dischargeDiagnosis": "Typhoid Fever — Resolved",
     "dischargeCondition": "Recovered",
-    "dischargeNotes": "Patient afebrile for 48 hours. Tolerating oral intake well...",
-    "returnDate": "2026-05-19",
-    "dischargingClinician": "Dr. Mwangi",
-    "lengthOfStayDays": 4,
+    "dischargeNotes": "Patient afebrile for 48 hours. Tolerating oral intake well.",
+    "returnDate": "2026-03-15",
+    "dischargingClinician": "Lugongo Abel",
+    "lengthOfStayDays": 5,
     "dischargeDrugs": [
       {
-        "drugName": "Ciprofloxacin 500mg",
-        "dosage": "500mg",
-        "frequency": "Twice daily",
-        "duration": "7 days",
-        "route": "Oral",
-        "quantity": "14 tablets",
+        "prescriptionId": "180010",
+        "drugName": "CIPROFLOXACIN 500MG",
+        "dosage": "Tablet",
+        "frequency": "2",
+        "duration": "7 Days",
+        "route": "Tablet",
+        "quantity": "14",
+        "status": "Dispensed",
         "instructions": "Take with food. Complete full course."
-      },
-      {
-        "drugName": "Oral Rehydration Salts",
-        "dosage": "1 sachet",
-        "frequency": "After each loose stool",
-        "route": "Oral",
-        "instructions": "Dissolve in 1 litre of clean water."
       }
     ]
-  }
+  },
+  "generatedAtUtc": "2026-05-13T09:00:00.0000000Z",
+  "correlationId": "c3d4e5f6a7b890cd1c2de3f4a5b6c7d8"
 }
 ```
 
@@ -917,21 +1156,19 @@ Authorization: Bearer {access_token}
 
 ## Quick Reference
 
-| Method | Endpoint | Scope | Description |
+| Method | Endpoint | Scope | Key Request Fields |
 |---|---|---|---|
-| `POST` | `/auth/token` | — | Obtain access token |
-| `POST` | `/patients/biodata` | `tmr:patients:read` | Patient biographical data |
-| `POST` | `/patients/history` | `tmr:history:read` | Patient encounter history |
-| `POST` | `/visits` | `tmr:visits:read` | List OPD visits |
-| `GET` | `/visits/{visitId}/opd` | `tmr:clinical:read` | Full OPD visit composite |
-| `POST` | `/clinical/lab-results` | `tmr:clinical:read` | Laboratory results |
-| `POST` | `/clinical/radiology` | `tmr:clinical:read` | Radiology examinations |
-| `POST` | `/clinical/prescriptions` | `tmr:clinical:read` | Prescriptions |
-| `POST` | `/ipd/visits` | `tmr:ipd:read` | List IPD admissions |
-| `GET` | `/ipd/visits/{ipdVisitId}` | `tmr:ipd:read` | Single IPD admission |
-| `POST` | `/ipd/visits/{ipdVisitId}/ward-rounds` | `tmr:clinical:read` | Ward rounds |
-| `GET` | `/ipd/visits/{ipdVisitId}/discharge` | `tmr:discharge:read` | Discharge summary |
-
----
+| `POST` | `/auth/token` | — | `GrantType`, `ClientId`, `ClientSecret`, `Scope` |
+| `POST` | `/patients/biodata` | `tmr:patients:read` | `Identifier.PatientNumber` etc. |
+| `POST` | `/patients/history` | `tmr:history:read` | `Identifier`, `Pagination` |
+| `POST` | `/visits` | `tmr:visits:read` | `Patient`, `Pagination` |
+| `GET` | `/visits/{visitId}/opd` | `tmr:clinical:read` | — |
+| `POST` | `/clinical/lab-results` | `tmr:clinical:read` | `VisitId` or `Patient`, `Pagination` |
+| `POST` | `/clinical/radiology` | `tmr:clinical:read` | `VisitId` or `Patient`, `Pagination` |
+| `POST` | `/clinical/prescriptions` | `tmr:clinical:read` | `VisitId` or `Patient`, `Pagination` |
+| `POST` | `/ipd/visits` | `tmr:ipd:read` | `Patient`, `Pagination` |
+| `GET` | `/ipd/visits/{ipdVisitId}` | `tmr:ipd:read` | — |
+| `POST` | `/ipd/visits/{ipdVisitId}/ward-rounds` | `tmr:clinical:read` | `Page`, `PageSize` |
+| `GET` | `/ipd/visits/{ipdVisitId}/discharge` | `tmr:discharge:read` | — |
 
 *Hanmak Technologies Ltd. — TMR Integration API v1.0.0*
